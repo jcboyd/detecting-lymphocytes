@@ -1,8 +1,10 @@
 from __future__ import print_function
 from __future__ import division
 
-from keras.models import Model
-from keras.layers import Input, Conv2D, MaxPooling2D, Activation
+import numpy as np
+
+from keras.models import Model, Sequential
+from keras.layers import Input, Conv2D, MaxPooling2D, Activation, UpSampling2D
 from keras.layers import Conv2DTranspose, concatenate
 from keras.layers import Flatten, Reshape, Dense, Dropout, BatchNormalization
 from keras.layers import GlobalAveragePooling2D
@@ -109,3 +111,213 @@ def SoftmaxRegression(input_shape=(2048,), nb_classes=3):
     model = Model(inputs=x_input, outputs=x)
 
     return model
+
+
+def GAN(img_shape, noise_dim):
+
+    output_dim = np.prod(img_shape)
+
+    # Generator
+    generator = Sequential()
+
+    generator.add(Dense(512, input_dim=noise_dim,
+                  kernel_initializer='glorot_uniform'))
+    generator.add(BatchNormalization(momentum=0.9))
+    generator.add(Activation('relu'))
+
+    generator.add(Dense(1024,
+                  kernel_initializer='glorot_uniform'))
+    generator.add(BatchNormalization(momentum=0.9))
+    generator.add(Activation('relu'))
+
+    generator.add(Dense(output_dim, activation='tanh',
+                        kernel_initializer='glorot_uniform'))
+    generator.add(Reshape(img_shape))
+
+    # Discriminator
+    discriminator = Sequential()
+
+    discriminator.add(Flatten())
+
+    discriminator.add(Dense(512,
+                      kernel_initializer='glorot_uniform'))
+    discriminator.add(LeakyReLU(0.2))
+
+    discriminator.add(Dense(256,
+                      kernel_initializer='glorot_uniform'))
+    discriminator.add(LeakyReLU(0.2))
+
+    discriminator.add(Dense(1, activation='sigmoid',
+                      kernel_initializer='glorot_uniform'))
+
+    return generator, discriminator
+ 
+
+def CGAN(img_shape, noise_dim, nb_classes):
+
+    output_dim = np.prod(img_shape)
+
+    z_input = Input((noise_dim,))
+    y_input = Input((nb_classes,))
+
+    z = Dense(128, input_dim=noise_dim,
+              kernel_initializer='glorot_uniform')(z_input)
+    z = BatchNormalization(momentum=0.9)(z)
+    z = Activation('relu')(z)
+
+    y = Dense(128, input_dim=nb_classes,
+          kernel_initializer='glorot_uniform')(y_input)
+    y = BatchNormalization(momentum=0.9)(y)
+    y = Activation('relu')(y)
+
+    x = concatenate([z, y])
+
+    x = Dense(512, kernel_initializer='glorot_uniform')(x)
+    x = BatchNormalization(momentum=0.9)(x)
+    x = Activation('relu')(x)
+
+    x = Dense(output_dim, activation='tanh',
+              kernel_initializer='glorot_uniform')(x)
+    x = Reshape(img_shape)(x)
+
+    generator = Model(inputs=[z_input, y_input], outputs=x)
+
+    x_input = Input(img_shape)
+    y_input = Input((nb_classes,))
+
+    x = Flatten()(x_input)
+    x = Dense(256, kernel_initializer='glorot_uniform')(x)
+    x = LeakyReLU(0.2)(x)
+
+    y = Dense(256, kernel_initializer='glorot_uniform')(y_input)
+    y = LeakyReLU(0.2)(y)
+
+    x = concatenate([x, y])
+
+    x = Dense(256, kernel_initializer='glorot_uniform')(x)
+    x = LeakyReLU(0.2)(x)
+
+    x = Dense(1, activation='sigmoid', kernel_initializer='glorot_uniform')(x)
+
+    discriminator = Model(inputs=[x_input, y_input], outputs=x)
+
+    return generator, discriminator
+
+
+def DCGAN(img_shape, noise_dim):
+
+    # Generator
+    generator = Sequential()
+
+    s = img_shape[0] // 4
+    nb_channels = img_shape[-1]
+
+    generator.add(Dense(128 * s * s, input_dim=noise_dim,
+                  kernel_initializer='glorot_uniform'))
+    generator.add(BatchNormalization(momentum=0.9))  # changing dist. merits lower momentum
+    generator.add(Activation('relu'))
+
+    generator.add(Reshape((s, s, 128)))
+
+    generator.add(UpSampling2D(size=(2, 2)))
+    generator.add(Conv2D(64, kernel_size=(5, 5), padding='same',
+                  kernel_initializer='glorot_uniform'))
+    generator.add(BatchNormalization(momentum=0.9))
+    generator.add(Activation('relu'))
+
+    generator.add(UpSampling2D(size=(2, 2)))
+    generator.add(Conv2D(nb_channels, kernel_size=(5, 5), padding='same', activation='tanh',
+                  kernel_initializer='glorot_uniform'))
+
+    # Discriminator
+    discriminator = Sequential()
+
+    discriminator.add(Conv2D(64, kernel_size=(5, 5), strides=(2, 2),
+                      padding='same', input_shape=img_shape,
+                      kernel_initializer='glorot_uniform'))
+    discriminator.add(LeakyReLU(0.2))
+
+    discriminator.add(Conv2D(128, kernel_size=(5, 5), strides=(2, 2),
+                      padding='same', kernel_initializer='glorot_uniform'))
+    discriminator.add(LeakyReLU(0.2))
+
+    discriminator.add(Flatten())
+    discriminator.add(Dense(1, activation='sigmoid',
+                      kernel_initializer='glorot_uniform'))
+
+    return generator, discriminator
+
+
+def CDCGAN(img_shape, noise_dim, nb_classes):
+
+    output_dim = np.prod(img_shape)
+    s = img_shape[0] // 4
+    nb_channels = img_shape[-1]
+
+    z_input = Input((noise_dim,))
+    y_input = Input((nb_classes,))
+
+    # z = Dense(64 * s * s, input_dim=noise_dim,
+    #           kernel_initializer='glorot_uniform')(z_input)
+    # z = BatchNormalization(momentum=0.9)(z)
+    # z = Activation('relu')(z)
+
+    # y = Dense(64 * s * s, input_dim=nb_classes,
+    #           kernel_initializer='glorot_uniform')(y_input)
+    # y = BatchNormalization(momentum=0.9)(y)
+    # y = Activation('relu')(y)
+
+    # x = concatenate([z, y])
+
+    x = concatenate([z_input, y_input])
+
+    x = Dense(128 * s * s,
+              kernel_initializer='glorot_uniform')(x)
+    x = BatchNormalization(momentum=0.9)(x)
+    x = Activation('relu')(x)
+
+    x = Reshape((s, s, 128))(x)
+
+    x = UpSampling2D(size=(2, 2))(x)
+    x = Conv2D(64, kernel_size=(5, 5), padding='same',
+               kernel_initializer='glorot_uniform')(x)
+    x = BatchNormalization(momentum=0.9)(x)
+    x = Activation('relu')(x)
+
+    x = UpSampling2D(size=(2, 2))(x)
+    x = Conv2D(nb_channels, kernel_size=(5, 5), padding='same', activation='tanh',
+               kernel_initializer='glorot_uniform')(x)
+
+    generator = Model(inputs=[z_input, y_input], outputs=x)
+
+    x_input = Input(img_shape)
+    y_input = Input((nb_classes,))
+
+    x = Conv2D(16, kernel_size=(5, 5), strides=(2, 2),
+               padding='same', input_shape=img_shape,
+               kernel_initializer='glorot_uniform')(x_input)
+    x = LeakyReLU(0.2)(x)
+
+    x = Conv2D(16, kernel_size=(5, 5), strides=(2, 2),
+               padding='same', kernel_initializer='glorot_uniform')(x)
+    x = LeakyReLU(0.2)(x)
+
+    x = Flatten()(x)
+
+    x = Dense(128, kernel_initializer='glorot_uniform')(x)
+    x = LeakyReLU(0.2)(x)
+
+    y = Dense(128, kernel_initializer='glorot_uniform')(y_input)
+    y = LeakyReLU(0.2)(y)
+
+    x = concatenate([x, y])
+
+    x = Dense(128, kernel_initializer='glorot_uniform')(x)
+    x = LeakyReLU(0.2)(x)
+
+    x = Dense(1, activation='sigmoid',
+              kernel_initializer='glorot_uniform')(x)
+
+    discriminator = Model(inputs=[x_input, y_input], outputs=x)
+
+    return generator, discriminator

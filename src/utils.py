@@ -4,7 +4,7 @@ import numpy as np
 
 from skimage.transform import rotate, rescale
 from skimage.io import imread
-from skimage.measure import regionprops
+from skimage.measure import regionprops, label
 from skimage.morphology import dilation, disk
 from skimage.feature import blob_log
 
@@ -33,6 +33,13 @@ experiments = {
         'test_wells' : ['VID193_B6_4']
     }
 }
+
+
+
+def set_trainable(model, trainable):
+    for layer in model.layers:
+        layer.trainable = trainable
+
 
 
 def import_annotations(annotations_dir, plate):
@@ -374,7 +381,44 @@ def gen_balanced(x_train, y_train, batch_size=64, augment=False):
 
             x_batch = data_augmentation(x_batch)
 
-        yield x_batch, y_batch[:, np.newaxis, np.newaxis, :]
+        yield x_batch, y_batch
+
+
+# def gen_balanced(x_train, y_train, batch_size=64, augment=False):
+
+#     """Generator of balanced SGD batches from potentially unbalanced data.
+
+#         Parameters
+#         -----------
+#         x_train : 2-D ndarray
+#         y_train : 1-D ndarray
+#         batch_size : int, optional
+
+#         Yields
+#         -------
+#         (x_batch, y_batch) : tuple of 2-D ndarray and 1-D ndarray
+#     """
+
+#     assert(x_train.shape[0] == y_train.shape[0])
+
+#     labels = np.argmax(y_train, axis=1)
+#     nb_classes = np.max(labels) + 1
+#     class_labels = [np.where(labels == i)[0] for i in range(nb_classes)]
+
+#     while True:
+
+#         size = batch_size // nb_classes
+#         batch_idx = np.ravel([np.random.choice(class_labels[class_idx], size) 
+#                               for class_idx in range(nb_classes)])
+
+#         x_batch = x_train[batch_idx]
+#         y_batch = y_train[batch_idx]
+
+#         if augment:
+
+#             x_batch = data_augmentation(x_batch)
+
+#         yield x_batch, y_batch[:, np.newaxis, np.newaxis, :]
 
 
 def gen_balanced_multi(x_train, y_train, batch_size=64, augment=False):
