@@ -120,12 +120,12 @@ def GAN(img_shape, noise_dim):
     # Generator
     generator = Sequential()
 
-    generator.add(Dense(512, input_dim=noise_dim,
+    generator.add(Dense(256, input_dim=noise_dim,
                   kernel_initializer='glorot_uniform'))
     generator.add(BatchNormalization(momentum=0.9))
     generator.add(Activation('relu'))
 
-    generator.add(Dense(1024,
+    generator.add(Dense(784,
                   kernel_initializer='glorot_uniform'))
     generator.add(BatchNormalization(momentum=0.9))
     generator.add(Activation('relu'))
@@ -160,19 +160,13 @@ def CGAN(img_shape, noise_dim, nb_classes):
     z_input = Input((noise_dim,))
     y_input = Input((nb_classes,))
 
-    z = Dense(128, input_dim=noise_dim,
-              kernel_initializer='glorot_uniform')(z_input)
-    z = BatchNormalization(momentum=0.9)(z)
-    z = Activation('relu')(z)
+    x = concatenate([z_input, y_input])
 
-    y = Dense(128, input_dim=nb_classes,
-          kernel_initializer='glorot_uniform')(y_input)
-    y = BatchNormalization(momentum=0.9)(y)
-    y = Activation('relu')(y)
+    x = Dense(256, kernel_initializer='glorot_uniform')(x)
+    x = BatchNormalization(momentum=0.9)(x)
+    x = Activation('relu')(x)
 
-    x = concatenate([z, y])
-
-    x = Dense(512, kernel_initializer='glorot_uniform')(x)
+    x = Dense(784, kernel_initializer='glorot_uniform')(x)
     x = BatchNormalization(momentum=0.9)(x)
     x = Activation('relu')(x)
 
@@ -185,14 +179,10 @@ def CGAN(img_shape, noise_dim, nb_classes):
     x_input = Input(img_shape)
     y_input = Input((nb_classes,))
 
-    x = Flatten()(x_input)
-    x = Dense(256, kernel_initializer='glorot_uniform')(x)
+    x = concatenate([Flatten()(x_input), y_input])
+
+    x = Dense(512, kernel_initializer='glorot_uniform')(x)
     x = LeakyReLU(0.2)(x)
-
-    y = Dense(256, kernel_initializer='glorot_uniform')(y_input)
-    y = LeakyReLU(0.2)(y)
-
-    x = concatenate([x, y])
 
     x = Dense(256, kernel_initializer='glorot_uniform')(x)
     x = LeakyReLU(0.2)(x)
@@ -256,18 +246,6 @@ def CDCGAN(img_shape, noise_dim, nb_classes):
 
     z_input = Input((noise_dim,))
     y_input = Input((nb_classes,))
-
-    # z = Dense(64 * s * s, input_dim=noise_dim,
-    #           kernel_initializer='glorot_uniform')(z_input)
-    # z = BatchNormalization(momentum=0.9)(z)
-    # z = Activation('relu')(z)
-
-    # y = Dense(64 * s * s, input_dim=nb_classes,
-    #           kernel_initializer='glorot_uniform')(y_input)
-    # y = BatchNormalization(momentum=0.9)(y)
-    # y = Activation('relu')(y)
-
-    # x = concatenate([z, y])
 
     x = concatenate([z_input, y_input])
 
