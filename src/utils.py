@@ -17,6 +17,8 @@ import torch
 
 from bs4 import BeautifulSoup
 
+import matplotlib.pyplot as plt
+
 
 experiments = {
     'raji_target' : {
@@ -33,6 +35,105 @@ experiments = {
         'test_wells' : ['VID193_B6_4']
     }
 }
+
+
+def evaluate_blobs(true_blobs, pred_blobs, tol=5):
+
+    tp, fp, fn = 0, 0, 0
+
+    for blob in true_blobs:
+
+        y, x, _ = blob
+
+        cond_y = abs(pred_blobs[:, 0] - y) < tol
+        cond_x = abs(pred_blobs[:, 1] - x) < tol
+
+        idx = np.nonzero(cond_y * cond_x)[0]
+
+        if len(idx) > 0:
+            idx = idx[0]
+            pred_blobs = np.vstack([pred_blobs[:idx], pred_blobs[idx+1:]])
+            tp += 1
+        else:
+            fn += 1
+
+    fp = len(pred_blobs)
+
+    return tp, fp, fn
+
+
+def get_errors(blobs, blobs_pred):
+
+    def is_match(search_blob, blobs, tol=3):
+        diffs = np.abs(blobs[:, :2] - search_blob[:2])
+        return np.any(np.logical_and(diffs[:, 0] < tol, diffs[:, 1] < tol))
+
+    fps = filter(lambda x : not is_match(x, blobs), (blobs_pred))
+    fns = filter(lambda x : not is_match(x, blobs_pred), (blobs))
+
+    return fps, fns
+
+
+def get_blobs(img, min_sigma=2, max_sigma=6, num_sigma=5, threshold=0.5):
+    blobs = blob_log(img, min_sigma, max_sigma, num_sigma, threshold)
+    blobs[:, 2] = blobs[:, 2] * np.sqrt(2)
+    return blobs
+
+
+def gen_pix2pix(crops, batch_size=1):
+
+    while True:
+
+        # random sample
+        idx = np.random.randint(crops.shape[0], size=batch_size)
+
+        x_batch = crops[idx, :, :256]
+        y_batch = crops[idx, :, 256:]
+
+        # stochastic data augmentation
+        if np.random.rand() > 0.5:
+            x_batch = np.fliplr(x_batch)
+            y_batch = np.fliplr(y_batch)
+
+        if np.random.rand() > 0.5:
+            x_batch = np.flipud(x_batch)
+            y_batch = np.flipud(y_batch)
+
+        # normalise to [-1, 1]
+        x_batch = 2 * x_batch - 1
+        y_batch = 2 * y_batch - 1
+
+        yield x_batch[..., None], y_batch[..., None]
+
+
+def sample_images(fnet, x_test, model_name, epoch):
+
+    gen_test = gen_pix2pix(x_test, batch_size=3)
+    images, labels = next(gen_test)
+
+    fake_labels = fnet.predict(images)
+    gen_imgs = np.concatenate([images, fake_labels, labels])
+
+    # Rescale images
+    gen_imgs = 0.5 * gen_imgs + 0.5
+    gen_imgs = np.clip(gen_imgs, 0, 1)
+
+    titles = ['Condition', 'Generated', 'Original']
+    fig, axs = plt.subplots(nrows=3, ncols=3)
+
+    cnt = 0
+
+    for i in range(3):
+
+        for j in range(3):
+
+            axs[i,j].imshow(gen_imgs[cnt].squeeze())
+            axs[i, j].set_title(titles[i])
+            axs[i,j].axis('off')
+            cnt += 1
+
+    fig.savefig('outputs/%s_%04d.png' % (model_name, epoch))
+    plt.close()        
 
 
 

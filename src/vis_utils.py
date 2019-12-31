@@ -12,6 +12,16 @@ from skimage.morphology import disk
 from ipywidgets import interact, IntSlider
 
 
+def plot_blobs(ax, img, blobs, colour='red'):
+
+    ax.imshow(img)
+
+    for blob in blobs:
+        y, x, r = blob
+        c = plt.Circle((x, y), r, color=colour, linewidth=2, fill=False)
+        ax.add_patch(c)
+
+
 def visualise_rgb(mcherry, gfp, phase_contrast):
 
     r = np.clip(mcherry + phase_contrast, 0, 1)
