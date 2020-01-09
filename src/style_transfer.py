@@ -8,11 +8,11 @@ from torchvision.models import vgg19
 import torchvision.transforms as transforms
 
 
-def draw_content(style_img, nb_cells, selem='disk', min_r=4, max_r=8):
+def draw_content(style_img, nb_cells, contour_intensity=0.8,
+    selem='disk', min_r=4, max_r=8):
 
     mean_intensity = np.mean(style_img / 255.)
     canvas = mean_intensity * np.ones_like(style_img)
-    contour_intensity = 0.8
 
     for _ in range(nb_cells):
 

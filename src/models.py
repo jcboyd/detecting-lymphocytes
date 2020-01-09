@@ -8,6 +8,7 @@ from keras.layers import Input, Conv2D, MaxPooling2D, Activation, UpSampling2D
 from keras.layers import Conv2DTranspose, concatenate, Concatenate
 from keras.layers import Flatten, Reshape, Dense, Dropout, BatchNormalization
 from keras.layers import GlobalAveragePooling2D, ZeroPadding2D
+from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
 from keras.layers.advanced_activations import LeakyReLU
 from keras.regularizers import l2
 from keras.optimizers import SGD
@@ -327,6 +328,28 @@ def patch_gan(img_shape):
     return Model([images, labels], validity)
 
 
+def patch_gan_cycle(img_shape):
+
+    def d_layer(layer_input, filters, f_size=4, normalization=True):
+        """Discriminator layer"""
+        d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same')(layer_input)
+        d = LeakyReLU(alpha=0.2)(d)
+        if normalization:
+            d = InstanceNormalization()(d)
+        return d
+
+    img = Input(shape=img_shape)
+
+    d1 = d_layer(img, 64, normalization=False)
+    d2 = d_layer(d1, 128)
+    d3 = d_layer(d2, 256)
+    d4 = d_layer(d3, 512)
+
+    validity = Conv2D(1, kernel_size=4, strides=1, padding='same')(d4)
+
+    return Model(img, validity)
+
+
 def fnet(img_shape, num_filters, activation):
 
     def conv2d(layer_input, filters, f_size=4, bn=True):
@@ -369,5 +392,44 @@ def fnet(img_shape, num_filters, activation):
 
     u7 = UpSampling2D(size=2)(u6)
     output_img = Conv2D(1, kernel_size=4, strides=1, padding='same', activation=activation)(u7)
+
+    return Model(d0, output_img)
+
+
+def fnet_cycle(img_shape, num_filters):
+
+    def conv2d(layer_input, filters, f_size=4):
+        """Layers used during downsampling"""
+        d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same')(layer_input)
+        d = LeakyReLU(alpha=0.2)(d)
+        d = InstanceNormalization()(d)
+        return d
+
+    def deconv2d(layer_input, skip_input, filters, f_size=4, dropout_rate=0):
+        """Layers used during upsampling"""
+        u = UpSampling2D(size=2)(layer_input)
+        u = Conv2D(filters, kernel_size=f_size, strides=1, padding='same', activation='relu')(u)
+        if dropout_rate:
+            u = Dropout(dropout_rate)(u)
+        u = InstanceNormalization()(u)
+        u = Concatenate()([u, skip_input])
+        return u
+
+    # Image input
+    d0 = Input(shape=img_shape)
+
+    # Downsampling
+    d1 = conv2d(d0, num_filters)
+    d2 = conv2d(d1, num_filters * 2)
+    d3 = conv2d(d2, num_filters * 4)
+    d4 = conv2d(d3, num_filters * 8)
+
+    # Upsampling
+    u1 = deconv2d(d4, d3, num_filters * 4)
+    u2 = deconv2d(u1, d2, num_filters * 2)
+    u3 = deconv2d(u2, d1, num_filters)
+
+    u4 = UpSampling2D(size=2)(u3)
+    output_img = Conv2D(1, kernel_size=4, strides=1, padding='same', activation='tanh')(u4)
 
     return Model(d0, output_img)

@@ -19,6 +19,8 @@ from bs4 import BeautifulSoup
 
 import matplotlib.pyplot as plt
 
+from src.style_transfer import draw_content
+
 
 experiments = {
     'raji_target' : {
@@ -106,6 +108,36 @@ def gen_pix2pix(crops, batch_size=1):
         yield x_batch[..., None], y_batch[..., None]
 
 
+def gen_cyclegan(crops, batch_size=1):
+
+    base_img = np.zeros(crops.shape[1:])
+
+    while True:
+
+        # random sample
+        idx = np.random.randint(crops.shape[0], size=batch_size)
+
+        x_batch = crops[idx]
+
+        # stochastic data augmentation
+        if np.random.rand() > 0.5:
+            x_batch = np.fliplr(x_batch)
+
+        if np.random.rand() > 0.5:
+            x_batch = np.flipud(x_batch)
+            
+        nb_cells = np.random.randint(10, 60)
+
+        y_batch = np.array([draw_content(base_img, nb_cells=nb_cells, contour_intensity=1)
+                            for _ in range(batch_size)])
+
+        # normalise to [-1, 1]
+        x_batch = 2 * x_batch - 1
+        y_batch = 2 * y_batch - 1
+
+        yield x_batch[..., None], y_batch[..., None]
+
+
 def sample_images(fnet, x_test, model_name, epoch):
 
     gen_test = gen_pix2pix(x_test, batch_size=3)
@@ -135,6 +167,41 @@ def sample_images(fnet, x_test, model_name, epoch):
     fig.savefig('outputs/%s_%04d.png' % (model_name, epoch))
     plt.close()        
 
+
+def sample_images_cycle(g_AB, g_BA, x_test, epoch):
+
+    gen_test = gen_cyclegan(x_test, batch_size=1)
+    imgs_A, imgs_B = next(gen_test)
+
+    # Translate images to the other domain
+    fake_B = g_AB.predict(imgs_A)
+    fake_A = g_BA.predict(imgs_B)
+
+    # Translate back to original domain
+    reconstr_A = g_BA.predict(fake_B)
+    reconstr_B = g_AB.predict(fake_A)
+
+    gen_imgs = np.concatenate([imgs_A, fake_B, reconstr_A, imgs_B, fake_A, reconstr_B])
+
+    # Rescale images
+    gen_imgs = 0.5 * gen_imgs + 0.5
+
+    titles = ['Original', 'Translated', 'Reconstructed']
+    fig, axs = plt.subplots(r, c)
+
+    cnt = 0
+
+    for i in range(2):
+
+        for j in range(3):
+
+            axs[i,j].imshow(gen_imgs[cnt].squeeze())
+            axs[i, j].set_title(titles[j])
+            axs[i,j].axis('off')
+            cnt += 1
+
+    fig.savefig('outputs/cyclegan_%04d.png' % epoch)
+    plt.close()
 
 
 def set_trainable(model, trainable):
