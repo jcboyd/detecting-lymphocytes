@@ -230,7 +230,7 @@ def assign_classes(df_features, mode, gfp_delta):
     hi_red = df_features.mean_red > t_reds
 
     lo_green = df_features.mean_green < (t_greens - gfp_delta)
-    hi_green = df_features.mean_green > (t_greens - gfp_delta)# + gfp_delta)
+    hi_green = df_features.mean_green > (t_greens + gfp_delta)# + gfp_delta)
 
     small_dead = np.percentile(df_features.area, q=35)
     small_raji = np.percentile(df_features.area, q=55)
@@ -274,6 +274,27 @@ def assign_classes(df_features, mode, gfp_delta):
     return df_features
 
 
+def class_instance_masks(df_features, labels):
+
+    unique_labels = np.unique(labels)
+
+    class_masks = []
+    instance_masks = []
+
+    for class_number in [1, 2]:
+
+        instance_labels = np.where(df_features['class'] == class_number)[0]
+        class_instances = unique_labels[instance_labels]
+        class_mask = np.isin(labels, class_instances)
+
+        class_mask = opening(class_mask, disk(2))
+
+        class_masks.append(class_mask)
+        instance_masks.append(label(class_mask))
+
+    return class_masks, instance_masks
+
+
 def run_pipeline(img, mode, gfp_delta):
 
     mcherry, gfp, phase_contrast = separate_channels(img)
@@ -303,3 +324,7 @@ def run_pipeline(img, mode, gfp_delta):
     classes = assign_classes(df_features, mode, gfp_delta)
 
     yield 'classes', classes
+
+    class_masks, instance_masks = class_instance_masks(df_features, labels)
+
+    yield 'class_masks', (class_masks, instance_masks)
