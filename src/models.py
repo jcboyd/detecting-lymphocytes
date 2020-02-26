@@ -100,7 +100,7 @@ def MultiFCN(input_shape=(None, None, 1), nb_classes=2, l=3e-5):
     opt = SGD(lr=5e-3, momentum=0.9, nesterov=True, decay=1e-5)
     losses = ['categorical_crossentropy', weighted_log_loss, weighted_mse]
     model_tr.compile(loss=losses, optimizer=opt)
-    
+
     return model_tr, model
 
 
@@ -152,7 +152,7 @@ def GAN(img_shape, noise_dim):
                       kernel_initializer='glorot_uniform'))
 
     return generator, discriminator
- 
+
 
 def CGAN(img_shape, noise_dim, nb_classes):
 
@@ -302,7 +302,7 @@ def CDCGAN(img_shape, noise_dim, nb_classes):
     return generator, discriminator
 
 
-def patch_gan(img_shape):
+def patch_gan(image_shape, label_shape):
 
     def d_layer(layer_input, filters, f_size=4, bn=True):
         """Discriminator layer"""
@@ -312,8 +312,8 @@ def patch_gan(img_shape):
             d = BatchNormalization(momentum=0.8)(d)
         return d
 
-    images = Input(shape=img_shape)
-    labels = Input(shape=img_shape)
+    images = Input(shape=image_shape)
+    labels = Input(shape=label_shape)
 
     # Concatenate image and conditioning image by channels to produce input
     combined_imgs = Concatenate(axis=-1)([images, labels])
@@ -398,9 +398,9 @@ def fnet(img_shape, num_filters, activation):
 
 def fnet_cycle(img_shape, num_filters):
 
-    def conv2d(layer_input, filters, f_size=4):
+    def conv2d(layer_input, filters, strides=2, f_size=4):
         """Layers used during downsampling"""
-        d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same')(layer_input)
+        d = Conv2D(filters, kernel_size=f_size, strides=strides, padding='same')(layer_input)
         d = LeakyReLU(alpha=0.2)(d)
         d = InstanceNormalization()(d)
         return d
@@ -416,20 +416,31 @@ def fnet_cycle(img_shape, num_filters):
         return u
 
     # Image input
-    d0 = Input(shape=img_shape)
+    input_img = Input(shape=img_shape)
+
+    in_conv_1 = conv2d(input_img, num_filters, strides=1)
+    in_conv_2 = conv2d(in_conv_1, num_filters, strides=1)
 
     # Downsampling
-    d1 = conv2d(d0, num_filters)
+    d1 = conv2d(in_conv_2, num_filters)
     d2 = conv2d(d1, num_filters * 2)
     d3 = conv2d(d2, num_filters * 4)
     d4 = conv2d(d3, num_filters * 8)
+    d5 = conv2d(d4, num_filters * 8)
+    d6 = conv2d(d5, num_filters * 8)
 
     # Upsampling
-    u1 = deconv2d(d4, d3, num_filters * 4)
-    u2 = deconv2d(u1, d2, num_filters * 2)
-    u3 = deconv2d(u2, d1, num_filters)
+    u1 = deconv2d(d6, d5, num_filters * 8)
+    u2 = deconv2d(u1, d4, num_filters * 8)
+    u3 = deconv2d(u2, d3, num_filters * 4)
+    u4 = deconv2d(u3, d2, num_filters * 2)
+    u5 = deconv2d(u4, d1, num_filters)
 
-    u4 = UpSampling2D(size=2)(u3)
-    output_img = Conv2D(1, kernel_size=4, strides=1, padding='same', activation='tanh')(u4)
+    u6 = UpSampling2D(size=2)(u5)
 
-    return Model(d0, output_img)
+    out_conv_1 = conv2d(u6, num_filters, strides=1)
+    out_conv_2 = conv2d(out_conv_1, num_filters, strides=1)
+
+    output_img = Conv2D(1, kernel_size=4, strides=1, padding='same', activation='tanh')(out_conv_2)
+
+    return Model(input_img, output_img)

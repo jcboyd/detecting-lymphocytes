@@ -1,5 +1,5 @@
 import numpy as np
-from skimage.morphology import disk, diamond, erosion
+from skimage.morphology import disk, diamond, erosion, dilation
 
 import torch
 import torch.nn as nn
@@ -7,34 +7,79 @@ from torch import optim
 from torchvision.models import vgg19
 import torchvision.transforms as transforms
 
+mu_0, sigma_0, min_0, max_0 = 4.84, 2 * 0.94, 3, 10
+mu_1, sigma_1, min_1, max_1 = 3.46, 2 * 0.58, 2, 7
 
-def draw_content(style_img, nb_cells, contour_intensity=0.8,
-    selem='disk', min_r=4, max_r=8):
+p_dead = 0.2
+delta = 2  # compensate for cell perimiter lost during segmentation
 
-    mean_intensity = np.mean(style_img / 255.)
-    canvas = mean_intensity * np.ones_like(style_img)
+def draw_content(style_img, nb_cells, selem='disk', mode='no-overlap'):
 
-    for _ in range(nb_cells):
+    canvas = np.zeros_like(style_img)
+    instance_mask = np.zeros_like(canvas)
+    bboxes = []
+
+    clearance_map = np.zeros_like(canvas)
+
+    for i in range(nb_cells):
 
         mask_img = np.zeros_like(canvas)
 
-        r = np.random.randint(min_r, max_r)
-        y = np.random.randint(r, mask_img.shape[0] - r)
-        x = np.random.randint(r, mask_img.shape[1] - r)
-
-        if selem == 'disk':
-            mask = contour_intensity * disk(r) 
+        # Choose cell radius from bimodal distribution
+        if np.random.rand() > p_dead:
+            r = int(np.clip(delta + mu_0 + sigma_0 * np.random.randn(), min_0, max_0))
         else:
-            mask = contour_intensity * diamond(r) 
+            r = int(np.clip(delta + mu_1 + sigma_1 * np.random.randn(), min_1, max_1))
 
-        mask_img[y-r:y+r+1, x-r:x+r+1] = mask
+        ys, xs = np.nonzero(1 - clearance_map)
 
-        canvas[mask_img > 0] = mask_img[mask_img > 0]    
-        eroded_mask = erosion(mask_img, disk(1))
-        canvas -= eroded_mask
-        canvas += mean_intensity * eroded_mask / contour_intensity
+        coords = list(zip(ys, xs))
+        idx = np.random.randint(len(coords))
+        y, x = coords[idx]
 
-    return canvas.astype('float32')
+        mask = disk(r) if selem == 'disk' else diamond(r)
+
+        # determine bounding box
+        top = np.maximum(y - r, 0)  # N.B. top < bottom
+        bottom = np.minimum(y + r + 1, canvas.shape[0])
+        left = np.maximum(x - r, 0)
+        right = np.minimum(x + r + 1, canvas.shape[1])
+
+        # adjust at borders
+        adjust_top = top - (y - r)
+        adjust_bottom = 2 * r - ((y + r + 1) - bottom) + 1
+        adjust_left = left - (x - r)
+        adjust_right = 2 * r - ((x + r + 1) - right) + 1
+
+        mask_img[top:bottom, left:right] = mask[adjust_top:adjust_bottom,
+                                                adjust_left:adjust_right]
+
+        instance_mask[mask_img > 0] = (i + 1) * mask_img[mask_img > 0]
+
+        # mark clearance
+        dilated_mask_img = dilation(mask_img, disk(3))
+        clearance_map[dilated_mask_img > 0] = dilated_mask_img[dilated_mask_img > 0]
+
+        # insert mask according to mode
+        if mode == 'no-overlap':
+
+            canvas[mask_img > 0] = mask_img[mask_img > 0]
+            eroded_mask = erosion(mask_img, disk(1))
+            canvas -= 0.5 * eroded_mask
+
+        elif mode == 'overlap':
+
+            eroded_mask = erosion(mask_img, disk(1))
+            mask_img -= eroded_mask
+            canvas[mask_img > 0] = mask_img[mask_img > 0]
+
+        elif mode == 'mask':
+
+            canvas[mask_img > 0] = mask_img[mask_img > 0]
+
+        bboxes.append([left, top, right, bottom])
+
+    return canvas.astype('float32'), instance_mask.astype('uint8'), bboxes, clearance_map
 
 
 deep_layer_dict = {'conv1_1' : 2,

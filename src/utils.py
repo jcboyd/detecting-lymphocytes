@@ -125,13 +125,16 @@ def gen_cyclegan(crops, batch_size=1):
 
         if np.random.rand() > 0.5:
             x_batch = np.flipud(x_batch)
-            
+
         nb_cells = np.random.randint(10, 60)
 
-        y_batch = np.array([draw_content(base_img, nb_cells=nb_cells, contour_intensity=1)
+        y_batch = np.array([draw_content(base_img, nb_cells=nb_cells)[0]
                             for _ in range(batch_size)])
 
         # normalise to [-1, 1]
+        x_batch = (x_batch - np.min(x_batch)) / (np.max(x_batch) - np.min(x_batch))
+        y_batch = (y_batch - np.min(y_batch)) / (np.max(y_batch) - np.min(y_batch))
+
         x_batch = 2 * x_batch - 1
         y_batch = 2 * y_batch - 1
 
@@ -187,7 +190,7 @@ def sample_images_cycle(g_AB, g_BA, x_test, epoch):
     gen_imgs = 0.5 * gen_imgs + 0.5
 
     titles = ['Original', 'Translated', 'Reconstructed']
-    fig, axs = plt.subplots(r, c)
+    fig, axs = plt.subplots(2, 3)
 
     cnt = 0
 
@@ -500,7 +503,18 @@ def data_augmentation(x_batch):
         x_batch : 2-D ndarray
     """
 
-    batch_size = x_batch.shape[0]
+    pad = 2
+
+    batch_size, h, w, c = x_batch.shape
+    padded_shape = (batch_size, h + 2 * pad, w + 2 * pad, c)
+
+    padding = np.zeros(padded_shape)
+    padding[:, 2:-2, 2:-2, :] = x_batch
+
+    delta_x = np.random.randint(3)
+    delta_y = np.random.randint(3)
+
+    x_batch = padding[:, delta_y:h+delta_y, delta_x:w+delta_x, :]
 
     # random left-right reflection
     flip_idx = np.random.binomial(n=1, p=0.5, size=batch_size)
